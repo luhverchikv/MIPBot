@@ -26,7 +26,7 @@ async def collect_free_feedback(message: Message, bot: Bot):
     db.add_feedback(user_id=message.from_user.id, description=feedback_text, status=0)
 
     # Уведомляем администраторов
-    for admin_id in config.bot.admin_ids:
+    for admin_id, _ in db.get_all_admins():
         try:
             await bot.send_message(
                 admin_id,
