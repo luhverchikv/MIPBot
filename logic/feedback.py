@@ -49,7 +49,8 @@ async def process_feedback(message: Message, bot: Bot, state: FSMContext):
     db.add_feedback(user_id=message.from_user.id, description=feedback_text, status=0)
 
     # Отправляем администраторам
-    for admin_id in config.bot.admin_ids:
+    #ADMINS = [admin_id for admin_id, _ in db.get_all_admins()]
+    for admin_id, _ in db.get_all_admins():
         await bot.send_message(admin_id, f"Получен новый отзыв:\n{feedback_text}")
     
     # Отвечаем пользователю
