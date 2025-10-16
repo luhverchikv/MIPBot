@@ -34,19 +34,19 @@ sudo apt update && sudo apt upgrade -y
 ### 2. Создайте отдельного пользователя (например, `botuser`)
 
 ```bash
-sudo adduser botuser
+sudo adduser mip_user
 ```
 
 Добавьте ему права на выполнение команд через `sudo`:
 
 ```bash
-sudo usermod -aG sudo botuser
+sudo usermod -aG sudo mip_user
 ```
 
 Переключитесь на нового пользователя:
 
 ```bash
-su - botuser
+su - mip_user
 ```
 
 ### 3. Проверьте наличие Python
@@ -157,7 +157,7 @@ WantedBy=multi-user.target
 
 > **Пояснения:**
 >
-> * `User=` — ваш системный пользователь
+> * `User=` — ваш системный пользователь, например mip_user
 > * `WorkingDirectory=` — путь к проекту
 > * `ExecStart=` — путь к Python и файлу запуска
 > * `Restart=always` — бот будет автоматически перезапускаться при сбоях
