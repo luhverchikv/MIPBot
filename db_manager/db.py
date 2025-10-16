@@ -1,9 +1,13 @@
 # db_manager/db.py
 import sqlite3
+import os
 
     
 class Database:
     def __init__(self, path_to_database='database/database.db'):
+        # Создаём директорию, если её нет
+        os.makedirs(os.path.dirname(path_to_database), exist_ok=True)
+        
         self.connection = sqlite3.connect(path_to_database)
         self.cursor = self.connection.cursor()
 
