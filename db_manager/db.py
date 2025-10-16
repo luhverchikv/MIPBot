@@ -1,53 +1,135 @@
-# logic/feedback_free.py
-from aiogram import Router, F, Bot
-from aiogram.types import Message
-from db_manager.db import Database
-from config import config
-import asyncio
+# db_manager/db.py
+import sqlite3
 
-feedback_free_router = Router()
-db = Database()
+    
+class Database:
+    def __init__(self, path_to_database='database/database.db'):
+        self.connection = sqlite3.connect(path_to_database)
+        self.cursor = self.connection.cursor()
 
+        with self.connection:
+            self.cursor.execute(
+                '''CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                user_id TEXT)''')
 
-@feedback_free_router.message(F.text & ~F.text.startswith('/'))
-async def collect_free_feedback(message: Message, bot: Bot):
-    """
-    Автоматический сбор обратной связи без FSM и кнопок.
-    Любое сообщение, не начинающееся с '/', считается отзывом.
-    """
+        with self.connection:
+            self.cursor.execute(
+                '''CREATE TABLE IF NOT EXISTS feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    description TEXT,
+                    status BOOL
+                )''')
 
-    feedback_text = message.text.strip()
-
-    # Игнорируем пустые сообщения
-    if not feedback_text:
-        return
-
-    # Сохраняем отзыв в базу
-    db.add_feedback(user_id=message.from_user.id, description=feedback_text, status=0)
-
-    # Уведомляем администраторов
-    for admin_id in config.bot.admin_ids:
-        try:
-            await bot.send_message(
-                admin_id,
-               f"🆕 Получен новый отзыв:\n\n{feedback_text}"
-                #f"🆕 Получен новый отзыв от @{message.from_user.username or message.from_user.full_name}:\n\n{feedback_text}"
+        # ⚡ Новая таблица для администраторов
+        with self.connection:
+            self.cursor.execute(
+                '''CREATE TABLE IF NOT EXISTS admins (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER UNIQUE,
+                    alias TEXT
+                )'''
             )
-        except Exception:
-            pass
 
-    # Благодарим пользователя
-    ans_1 = await message.answer(
-        "Спасибо за ваше сообщение! 💬 Мы обязательно его рассмотрим и примем во внимание."
-    )
-    ans_2 = await message.answer(
-        "Если хотите добавить что-то еще — просто напишите сюда!📨"
-    )
+    # --- USERS ---
+    def user_exists(self, user_id):
+        with self.connection:
+            result = self.cursor.execute(
+                "SELECT * FROM users WHERE user_id = ?",
+                (user_id,)
+            ).fetchmany(1)
+        return bool(len(result))
 
-    # Через 30 секунд очищаем чат
-    await asyncio.sleep(30)
-    for msg in (ans_1, ans_2, message):
-        try:
-            await msg.delete()
-        except Exception:
-            pass
+    def add_user(self, user_id):
+        with self.connection:
+            return self.cursor.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
+
+    def get_all_users(self):
+        with self.connection:
+            result = self.cursor.execute("SELECT user_id FROM users").fetchall()
+        return [row[0] for row in result]
+        
+    # --- FEEDBACK ---
+    def add_feedback(self, user_id, description, status=0):
+        with self.connection:
+            return self.cursor.execute(
+                "INSERT INTO feedback (user_id, description, status) VALUES (?, ?, ?)",
+                (user_id, description, status)
+            )
+    
+    def count_feedback_with_status_zero(self):
+        with self.connection:
+            result = self.cursor.execute(
+                "SELECT COUNT(*) FROM feedback WHERE status = 0"
+            ).fetchone()
+        return result[0] if result else 0
+        
+    def get_open_feedbacks(self):
+        """
+        Возвращает список кортежей (id, user_id, description) для всех записей со status = 0
+        """
+        with self.connection:
+            rows = self.cursor.execute(
+                "SELECT id, user_id, description FROM feedback WHERE status = 0"
+            ).fetchall()
+        return [(r[0], r[1], r[2]) for r in rows]
+        
+    def get_feedback_status(self, feedback_id):
+        with self.connection:
+            row = self.cursor.execute("SELECT status FROM feedback WHERE id = ?", (feedback_id,)).fetchone()
+        return row[0] if row else None
+
+    def set_feedback_status(self, feedback_id, status):
+        with self.connection:
+            self.cursor.execute("UPDATE feedback SET status = ? WHERE id = ?", (status, feedback_id))
+            self.connection.commit()
+
+    def get_feedback_user_id(self, feedback_id):
+        with self.connection:
+            row = self.cursor.execute("SELECT user_id FROM feedback WHERE id = ?", (feedback_id,)).fetchone()
+        return row[0] if row else None 
+        
+    def get_all_feedbacks(self):
+        with self.connection:
+            rows = self.cursor.execute("SELECT id, user_id, description, status FROM feedback").fetchall()
+            return [(r[0], r[1], r[2], r[3]) for r in rows]
+
+    def delete_feedback(self, feedback_id):
+        with self.connection:
+            self.cursor.execute("DELETE FROM feedback WHERE id = ?", (feedback_id,))
+
+    # --- ADMIN METHODS ---
+    def add_admin(self, user_id, alias=None):
+        """Добавляет администратора."""
+        with self.connection:
+            self.cursor.execute(
+                "INSERT OR IGNORE INTO admins (user_id, alias) VALUES (?, ?)",
+                (user_id, alias)
+            )
+            self.connection.commit()
+
+    def get_all_admins(self):
+        with self.connection:
+            rows = self.cursor.execute("SELECT user_id, alias FROM admins").fetchall()
+        return [(r[0], r[1]) for r in rows]
+
+    def delete_admin(self, user_id):
+        with self.connection:
+            self.cursor.execute("DELETE FROM admins WHERE user_id = ?", (user_id,))
+            self.connection.commit()
+
+    def admin_exists(self, user_id):
+        with self.connection:
+            row = self.cursor.execute("SELECT 1 FROM admins WHERE user_id = ?", (user_id,)).fetchone()
+        return bool(row)
+
+    def count_admins(self):
+        with self.connection:
+            result = self.cursor.execute("SELECT COUNT(*) FROM admins").fetchone()
+        return result[0] if result else 0
+    
+    def is_admin(self, user_id: int) -> bool:
+        """Проверить, является ли пользователь администратором"""
+        self.cursor.execute("SELECT 1 FROM admins WHERE user_id = ?", (user_id,))
+        return self.cursor.fetchone() is not None
